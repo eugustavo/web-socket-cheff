@@ -6,7 +6,7 @@ import { Eye, EyeOff } from 'lucide-react'
 
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {
-  error?: string
+  error?: any
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(

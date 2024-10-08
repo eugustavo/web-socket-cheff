@@ -1,42 +1,33 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-import Image from 'next/image'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { RefreshCcw } from 'lucide-react'
+import Image from 'next/image'
 
-import { z } from 'zod'
+import { set, z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+
+import { useToast } from '@/hooks/use-toast'
+import { useSocket } from '@/hooks/use-socket'
 
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useToast } from '@/hooks/use-toast'
-
-import { api } from '@/services/api'
-import { AxiosError } from 'axios'
 
 const schema = z.object({
-  email: z.string().email('E-mail inválido'),
-  password: z.string().min(6, 'Senha deve conter pelo menos 6 caracteres'),
+  token: z.string().nonempty('Token é obrigatório'),
 })
 
 type FormData = z.infer<typeof schema>
 
-interface LoginResponse {
-  token: string
-}
-
 export default function Home() {
-  const [inviteUser, setInviteUser] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-
-  const [serial, setSerial] = useState('')
-  const [email, setEmail] = useState('')
 
   const { toast } = useToast()
   const router = useRouter()
+  const socket = useSocket()
 
   const {
     register,
@@ -46,71 +37,59 @@ export default function Home() {
     resolver: zodResolver(schema),
   })
 
-  const onSubmit = async ({ email, password }: FormData) => {
+  const onSubmit = ({ token }: FormData) => {
     setIsLoading(true)
 
     try {
-      const { data } = await api.post<LoginResponse>('/sessions', {
-        email,
-        password,
-      })
+      if (!socket) {
+        throw new Error('Socket não está disponível')
+      }
 
-      localStorage.setItem('token', data.token)
-      router.push('/dashboard')
-    } catch (error) {
-      if (error instanceof AxiosError) {
+      socket.emit('connect_clippcheff', { token })
+      socket.on('connect_clippcheff_response', data => {
+        if (data.connected) {
+          localStorage.setItem('@clippcardapiodigital:token', token)
+          localStorage.setItem('@clippcardapiodigital:apiKey', data.apiKey)
+
+          return router.push('/dashboard')
+        }
+
         return toast({
-          title: error.response?.data.message,
+          title: 'Token inválido',
           description: 'Verifique os dados e tente novamente',
+          variant: 'destructive',
+          duration: 3000,
         })
-      }
-
-      return toast({
-        title: 'Erro ao realizar login',
-        description: 'Verifique os dados e tente novamente',
       })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const inviteUserTest = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setIsLoading(true)
-
-    try {
-      const { data } = await api.post('/users/invite', {
-        email,
-        serial,
-      })
-
-      if (data.url) {
-        return toast({
-          title: 'Usuário convidado com sucesso',
-          description: 'Clique no link para completar o cadastro',
-          action: (
-            <Button
-              className="bg-[#e9a84d] hover:bg-[#d99b3e] text-white"
-              onClick={() => window.open(data.url)}
-            >
-              Abrir link
-            </Button>
-          ),
-        })
-      }
     } catch (error) {
       return toast({
-        title: 'Erro ao enviar convite',
+        title: 'Erro ao verificar token',
         description: 'Verifique os dados e tente novamente',
+        variant: 'destructive',
+        duration: 3000,
       })
     } finally {
-      setIsLoading(false)
+      setTimeout(() => setIsLoading(false), 500)
     }
   }
+
+  useEffect(() => {
+    const token = localStorage.getItem('@clippcardapiodigital:token')
+
+    if (token && socket) {
+      socket.emit('connect_clippcheff', { token })
+      socket.on('connect_clippcheff_response', data => {
+        if (data.connected) {
+          localStorage.setItem('@clippcardapiodigital:apiKey', data.apiKey)
+          router.push('/dashboard')
+        }
+      })
+    }
+  }, [socket, router])
 
   return (
     <div className="min-h-screen flex flex-col">
-      <div className="flex-1 bg-[#e9a84d]" />
+      <div className="flex-1 bg-yellow_zucchetti" />
       <div className="flex-1 bg-white" />
 
       <div className="absolute inset-0 flex items-center justify-center p-4">
@@ -133,86 +112,29 @@ export default function Home() {
             </CardHeader>
 
             <CardContent>
-              {inviteUser ? (
-                <form onSubmit={inviteUserTest}>
-                  <div className="space-y-4">
-                    <Input
-                      placeholder="E-mail"
-                      className="placeholder:text-zinc-400 focus-visible:ring-yellow-500"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                    />
+              <form onSubmit={handleSubmit(onSubmit)}>
+                <Input
+                  placeholder="Token"
+                  className="placeholder:text-zinc-400 focus-visible:ring-yellow-500"
+                  {...register('token')}
+                  error={errors.token?.message}
+                />
 
-                    <Input
-                      placeholder="Serial"
-                      className="placeholder:text-zinc-400 focus-visible:ring-yellow-500"
-                      value={serial}
-                      onChange={e => setSerial(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Button
-                      className="w-full mt-6 uppercase font-bold bg-[#e9a84d] hover:bg-[#d99b3e] text-white transition-colors duration-300"
-                      type="submit"
-                      disabled={isLoading}
-                    >
-                      Enviar
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="w-full mt-6 uppercase font-bold border-[#e9a84d] text-[#d99b3e] transition-colors duration-300 hover:bg-[#e9a84d] hover:text-white"
-                      onClick={() => setInviteUser(false)}
-                    >
-                      Voltar para login
-                    </Button>
-                  </div>
-                </form>
-              ) : (
-                <form onSubmit={handleSubmit(onSubmit)}>
-                  <div className="space-y-6">
-                    <Input
-                      placeholder="E-mail"
-                      className="placeholder:text-zinc-400 focus-visible:ring-yellow-500"
-                      {...register('email')}
-                      error={errors.email?.message}
-                    />
-
-                    <Input
-                      placeholder="Senha"
-                      type="password"
-                      className="placeholder:text-zinc-400 "
-                      {...register('password')}
-                      error={errors.password?.message}
-                    />
-                  </div>
-
-                  <Link
-                    className="mt-2 text-sm text-gray-600 hover:underline block text-right"
-                    href="#"
-                  >
-                    Esqueceu a senha?
-                  </Link>
-
-                  <div className="space-y-2">
-                    <Button
-                      className="w-full mt-6 uppercase font-bold bg-[#e9a84d] hover:bg-[#d99b3e] text-white transition-colors duration-300"
-                      type="submit"
-                    >
-                      Entrar
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="w-full mt-6 uppercase font-bold border-[#e9a84d] text-[#d99b3e] transition-colors duration-300 hover:bg-[#e9a84d] hover:text-white"
-                      onClick={() => setInviteUser(true)}
-                    >
-                      Teste invite
-                    </Button>
-                  </div>
-                </form>
-              )}
+                <Button
+                  className="w-full mt-6 uppercase font-bold bg-yellow_zucchetti hover:bg-yellow_zucchetti_hover text-white transition-colors duration-300"
+                  type="submit"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <RefreshCcw className="h-4 w-4 mr-2 animate-spin" />
+                      <span>Verificando...</span>
+                    </>
+                  ) : (
+                    'Entrar'
+                  )}
+                </Button>
+              </form>
             </CardContent>
           </Card>
         </div>

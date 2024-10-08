@@ -1,85 +1,168 @@
 'use client'
 
+import { useCallback, useEffect, useState } from 'react'
+import { RefreshCcw } from 'lucide-react'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
 
+import { Badge } from '@/components/ui/badge'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { MessageCircleMore, NotepadText, QrCode } from 'lucide-react'
 
-export default function Home() {
-  const router = useRouter()
+import { useSocket } from '@/hooks/use-socket'
+import { toast } from '@/hooks/use-toast'
+import { TableSkeleton } from '@/components/skeletons/table'
 
-  function handleRedirect(route: string) {
-    switch (route) {
-      case 'menu':
-        router.push('/cardapio')
-        break
-      case 'table':
-        router.push('/mesa')
-        break
-      case 'whatsapp':
-        router.push('/whatsapp')
-        break
-      default:
-        break
+export interface Product {
+  id: number
+  name: string
+  price: number
+  status: string
+  image_url: string
+  description: string
+}
+
+export default function Dashboard() {
+  const [products, setProducts] = useState<Array<Product>>([])
+  const [isLoading, setIsLoading] = useState(false)
+
+  const socket = useSocket()
+
+  const fetchProducts = useCallback(() => {
+    setIsLoading(true)
+
+    const token = localStorage.getItem('@clippcardapiodigital:token')
+
+    try {
+      if (token && socket) {
+        socket.emit('send_me_products', { token })
+        socket.on('products', data => {
+          setProducts(data.products)
+          localStorage.setItem(
+            '@clippcardapiodigital:products',
+            JSON.stringify(data.products)
+          )
+        })
+
+        return setTimeout(
+          () =>
+            toast({
+              title: 'Produtos atualizados',
+              description: 'Produtos atualizados com sucesso',
+              duration: 3000,
+            }),
+          500
+        )
+      }
+    } catch (error) {
+      console.log(error)
+
+      return toast({
+        title: 'Algo deu errado',
+        description:
+          'Verifique se o servidor está executando e tente novamente',
+        variant: 'destructive',
+        duration: 3000,
+      })
+    } finally {
+      setTimeout(() => setIsLoading(false), 500)
     }
-  }
+  }, [socket])
+
+  useEffect(() => {
+    setIsLoading(true)
+    const products = localStorage.getItem('@clippcardapiodigital:products')
+
+    if (products) {
+      setTimeout(() => {
+        setProducts(JSON.parse(products))
+        setIsLoading(false)
+      }, 500)
+      return
+    }
+
+    fetchProducts()
+  }, [fetchProducts])
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <div className="flex-1 bg-[#e9a84d]" />
-      <div className="flex-1 bg-white" />
-
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="w-full max-w-md space-y-8">
-          <div className="flex justify-center">
-            <Image
-              alt="ClippCheff Logo"
-              className="-mt-32"
-              src="/logo-white.png"
-              width={277}
-              height={200}
-              priority
-            />
-          </div>
-          <Card className="w-full shadow-lg">
-            <CardHeader>
-              <CardTitle className="text-2xl text-center text-zinc-600">
-                Cardápio Digital
-              </CardTitle>
-            </CardHeader>
-
-            <CardContent className="flex flex-col items-center">
-              <div className="space-y-4">
-                <Button className="w-full mt-6 uppercase rounded-full font-bold bg-[#e9a84d] hover:bg-[#d99b3e] text-white transition-colors duration-300">
-                  <NotepadText size={18} />
-                  <div className="w-full">Ver cardápio</div>
-                </Button>
-
-                <Button className="w-full mt-6 uppercase rounded-full font-bold bg-[#e9a84d] hover:bg-[#d99b3e] text-white transition-colors duration-300">
-                  <QrCode size={18} />
-                  <div className="w-full">Pedir na mesa</div>
-                </Button>
-
-                <Button className="w-full mt-6 uppercase rounded-full font-bold bg-[#e9a84d] hover:bg-[#d99b3e] text-white transition-colors duration-300">
-                  <MessageCircleMore size={18} />
-                  <div className="w-full">WhatsApp</div>
-                </Button>
-              </div>
-
-              <Image
-                alt="Zucchetti Logo"
-                className="mt-12"
-                src="/zucchetti-logo.png"
-                width={160}
-                height={36}
-                priority
-              />
-            </CardContent>
-          </Card>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <div className="space-y-1">
+          <CardTitle>Produtos</CardTitle>
+          <CardDescription>
+            Visualize os produtos que aparecerão no cardápio digital
+          </CardDescription>
         </div>
-      </div>
-    </div>
+
+        <Button variant="outline" onClick={fetchProducts}>
+          <RefreshCcw
+            className={`h-4 w-4 mr-2 ${isLoading && 'animate-spin'}`}
+          />
+          <span>Atualizar</span>
+        </Button>
+      </CardHeader>
+
+      <CardContent>
+        {isLoading ? (
+          <TableSkeleton />
+        ) : products.length === 0 ? (
+          <div className="flex items-center justify-center mt-4">
+            <p className="text-center text-gray-500 text-sm">
+              Nenhum produto encontrado. Atualize para sincronizar.
+            </p>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="hidden w-[100px] sm:table-cell">
+                  <span className="sr-only">Image</span>
+                </TableHead>
+                <TableHead>Nome</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Preço</TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {products.map(product => (
+                <TableRow key={product.id}>
+                  <TableCell className="hidden sm:table-cell">
+                    <Image
+                      alt={product.name}
+                      className="aspect-square rounded-md object-cover"
+                      height="64"
+                      width="64"
+                      src={product.image_url}
+                    />
+                  </TableCell>
+
+                  <TableCell className="font-medium">{product.name}</TableCell>
+
+                  <TableCell>
+                    <Badge variant="outline">Ativo</Badge>
+                  </TableCell>
+
+                  <TableCell>{product.price}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   )
 }
