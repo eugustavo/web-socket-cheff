@@ -1,4 +1,5 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
@@ -13,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export default function Settings() {
-  const token = localStorage.getItem('@clippcardapiodigital:token')
+  const [token, setToken] = useState('')
 
   const router = useRouter()
 
@@ -24,6 +25,16 @@ export default function Settings() {
 
     router.push('/')
   }
+
+  useEffect(() => {
+    const tokenExists = localStorage.getItem('@clippcardapiodigital:token')
+
+    if (!tokenExists) {
+      return router.push('/')
+    }
+
+    setToken(tokenExists)
+  }, [router])
 
   return (
     <Card>
